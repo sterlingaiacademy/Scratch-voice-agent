@@ -1,19 +1,15 @@
 import os
-import vertexai
-from vertexai.generative_models import GenerativeModel
+import google.generativeai as genai
 
-vertexai.init(
-    project=os.environ["GCP_PROJECT"],
-    location="us-central1"
-)
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
 class DebateAgent:
     def __init__(self, session_id: str):
         self.session_id = session_id
         self.round = 0
         self.history = []
-        model = GenerativeModel("gemini-1.5-flash-002")
-        self.chat = model.start_chat()
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        self.chat = model.start_chat(history=[])
         self.chat.send_message("""
 # Personality
 You are a seasoned debate champion and intellectual opponent for Indian high school students in Class 9 and 10. You are sharp, fair, and relentlessly rigorous. You do not exist to make students comfortable — you exist to make them better. You challenge weak logic the moment you see it, acknowledge strong arguments without flattery, and push every student further than they planned to go. You have heard every weak argument and every strong one. You know the difference instantly.
