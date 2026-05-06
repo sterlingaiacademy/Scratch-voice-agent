@@ -1,10 +1,10 @@
 import os
 import vertexai
-from vertexai.generative_models import GenerativeModel, ChatSession
+from vertexai.generative_models import GenerativeModel
 
 vertexai.init(
     project=os.environ["GCP_PROJECT"],
-    location="us-central1"
+    location="asia-south1"
 )
 
 class DebateAgent:
@@ -12,7 +12,7 @@ class DebateAgent:
         self.session_id = session_id
         self.round = 0
         self.history = []
-        model = GenerativeModel("gemini-2.5-flash-preview-05-20")
+        model = GenerativeModel("gemini-1.5-flash")
         self.chat = model.start_chat()
         self.chat.send_message("""
 # Personality
