@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GForce Debate Agent</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+  .header { background: #1e293b; padding: 16px 24px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #334155; }
+  .header h1 { font-size: 20px; font-weight: 600; color: #f1f5f9; }
+  .badge { background: #3b82f6; color: white; font-size: 11px; padding: 3px 8px; border-radius: 12px; font-weight: 500; }
+  .container { max-width: 800px; margin: 0 auto; padding: 24px 16px; }
+  .chat-box { background: #1e293b; border-radius: 12px; padding: 20px; min-height: 400px; max-height: 500px; overflow-y: auto; margin-bottom: 16px; border: 1px solid #334155; }
+  .msg { margin-bottom: 16px; }
+  .msg-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .msg-agent .msg-label { color: #60a5fa; }
+  .msg-student .msg-label { color: #34d399; }
+  .msg-text { font-size: 15px; line-height: 1.6; padding: 12px 16px; border-radius: 8px; }
+  .msg-agent .msg-text { background: #1e3a5f; border-left: 3px solid #3b82f6; }
+  .msg-student .msg-text { background: #14532d; border-left: 3px solid #22c55e; }
+  .controls { display: flex; flex-direction: column; gap: 10px; }
+  .mic-btn { padding: 16px; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; width: 100%; }
+  .mic-btn.idle { background: #3b82f6; color: white; }
+  .mic-btn.listening { background: #ef4444; color: white; animation: pulse 1s infinite; }
+  .mic-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .text-row { display: flex; gap: 8px; }
+  .text-input { flex: 1; padding: 12px 16px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: 14px; }
+  .text-input::placeholder { color: #64748b; }
+  .send-btn { padding: 12px 20px; background: #22c55e; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .send-btn:disabled { opacity: 0.4; }
+  .action-row { display: flex; gap: 8px; }
+  .end-btn { flex: 1; padding: 12px; background: #7c3aed; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .end-btn:disabled { opacity: 0.4; }
+  .status { text-align: center; font-size: 13px; color: #94a3b8; padding: 8px; min-height: 28px; }
+  .status.listening { color: #ef4444; font-weight: 600; }
+  .round-badge { display: inline-block; background: #334155; padding: 4px 10px; border-radius: 12px; font-size: 12px; color: #94a3b8; margin-bottom: 12px; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
+  .hidden { display: none; }
+  .start-screen { text-align: center; padding: 60px 20px; }
+  .start-screen h2 { font-size: 28px; margin-bottom: 12px; color: #f1f5f9; }
+  .start-screen p { color: #94a3b8; margin-bottom: 32px; font-size: 16px; line-height: 1.6; }
+  .start-btn { padding: 18px 48px; background: #3b82f6; color: white; border: none; border-radius: 12px; font-size: 18px; font-weight: 600; cursor: pointer; }
+  .start-btn:hover { background: #2563eb; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>GForce Debate Agent</h1>
+  <span class="badge">AI Powered</span>
+</div>
+<div class="container">
+  <div id="start-screen" class="start-screen">
+    <h2>Welcome to Debate Practice</h2>
+    <p>Practice your debate skills against an AI opponent.<br>Designed for Class 9 and 10 students.</p>
+    <button class="start-btn" onclick="startSession()">Start Debate Session</button>
+  </div>
+  <div id="debate-screen" class="hidden">
+    <div id="round-info" class="round-badge">Round 0</div>
+    <div class="chat-box" id="chat"></div>
+    <p class="status" id="status">Ready</p>
+    <div class="controls">
+      <button class="mic-btn idle" id="mic-btn" onclick="toggleMic()">🎙️ Click to Speak</button>
+      <div class="text-row">
+        <input class="text-input" id="text-input"
+          placeholder="Or type your argument here..."
+          onkeydown="if(event.key==='Enter') sendText()" />
+        <button class="send-btn" id="send-btn" onclick="sendText()">Send</button>
+      </div>
+      <div class="action-row">
+        <button class="end-btn" id="end-btn" onclick="endDebate()">⚖️ End Debate & Get Feedback</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+let sessionId = null;
+let recognition = null;
+let isListening = false;
+let isBusy = false;
+
+async function startSession() {
+  document.getElementById('start-screen').classList.add('hidden');
+  document.getElementById('debate-screen').classList.remove('hidden');
+  setStatus('Starting your debate session...');
+  setBusy(true);
+  try {
+    const res = await fetch('/session/start', { method: 'POST' });
+    const data = await res.json();
+    sessionId = data.session_id;
+    addMessage('agent', 'Debate Agent', data.text);
+    await playAudio(data.audio);
+    setStatus('Your turn — speak or type your argument');
+  } catch(e) {
+    setStatus('Error: ' + e.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function setupRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { alert('Voice input requires Chrome or Edge browser.'); return null; }
+  const rec = new SR();
+  rec.continuous = false;
+  rec.interimResults = true;
+  rec.lang = 'en-IN';
+  rec.onstart = () => {
+    isListening = true;
+    document.getElementById('mic-btn').className = 'mic-btn listening';
+    document.getElementById('mic-btn').textContent = '⏹️ Stop Recording';
+    setStatus('Listening — speak your argument...', true);
+  };
+  rec.onresult = (e) => {
+    const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+    document.getElementById('text-input').value = transcript;
+  };
+  rec.onend = () => {
+    isListening = false;
+    document.getElementById('mic-btn').className = 'mic-btn idle';
+    document.getElementById('mic-btn').textContent = '🎙️ Click to Speak';
+    const text = document.getElementById('text-input').value.trim();
+    if (text) sendArgument(text);
+  };
+  rec.onerror = (e) => {
+    setStatus('Mic error: ' + e.error);
+    isListening = false;
+    document.getElementById('mic-btn').className = 'mic-btn idle';
+    document.getElementById('mic-btn').textContent = '🎙️ Click to Speak';
+  };
+  return rec;
+}
+
+function toggleMic() {
+  if (isBusy) return;
+  if (!recognition) recognition = setupRecognition();
+  if (!recognition) return;
+  if (isListening) { recognition.stop(); }
+  else { document.getElementById('text-input').value = ''; recognition.start(); }
+}
+
+function sendText() {
+  const text = document.getElementById('text-input').value.trim();
+  if (text && !isBusy) sendArgument(text);
+}
+
+async function sendArgument(text) {
+  addMessage('student', 'You', text);
+  document.getElementById('text-input').value = '';
+  setStatus('AI is thinking...');
+  setBusy(true);
+  try {
+    const res = await fetch('/session/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, text })
+    });
+    const data = await res.json();
+    document.getElementById('round-info').textContent = 'Round ' + data.round;
+    addMessage('agent', 'Debate Agent', data.text);
+    await playAudio(data.audio);
+    setStatus('Your turn — speak or type your argument');
+  } catch(e) {
+    setStatus('Error: ' + e.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function endDebate() {
+  if (isBusy) return;
+  setStatus('Generating your feedback...');
+  setBusy(true);
+  try {
+    const res = await fetch('/session/summary/' + sessionId);
+    const data = await res.json();
+    addMessage('agent', 'Debate Feedback', data.summary);
+    await playAudio(data.audio);
+    setStatus('Debate complete — ' + data.total_rounds + ' rounds');
+    await fetch('/session/' + sessionId, { method: 'DELETE' });
+  } catch(e) {
+    setStatus('Error: ' + e.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function addMessage(type, label, text) {
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div');
+  div.className = 'msg msg-' + type;
+  div.innerHTML = '<div class="msg-label">' + label + '</div><div class="msg-text">' + text + '</div>';
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function playAudio(b64) {
+  return new Promise(resolve => {
+    const audio = new Audio('data:audio/mp3;base64,' + b64);
+    audio.onended = resolve;
+    audio.onerror = resolve;
+    audio.play().catch(resolve);
+  });
+}
+
+function setStatus(msg, isRed = false) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = isRed ? 'status listening' : 'status';
+}
+
+function setBusy(busy) {
+  isBusy = busy;
+  document.getElementById('mic-btn').disabled = busy;
+  document.getElementById('send-btn').disabled = busy;
+  document.getElementById('end-btn').disabled = busy;
+}
+
+window.onload = () => { recognition = setupRecognition(); };
+</script>
+</body>
+</html>
