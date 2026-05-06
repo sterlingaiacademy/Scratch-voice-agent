@@ -42,21 +42,28 @@
   .start-screen p { color: #94a3b8; margin-bottom: 32px; font-size: 16px; line-height: 1.6; }
   .start-btn { padding: 18px 48px; background: #3b82f6; color: white; border: none; border-radius: 12px; font-size: 18px; font-weight: 600; cursor: pointer; }
   .start-btn:hover { background: #2563eb; }
+  .error-msg { background: #450a0a; border: 1px solid #991b1b; color: #fca5a5; padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 12px; display: none; }
 </style>
 </head>
 <body>
+
 <div class="header">
   <h1>GForce Debate Agent</h1>
   <span class="badge">AI Powered</span>
 </div>
+
 <div class="container">
+
   <div id="start-screen" class="start-screen">
     <h2>Welcome to Debate Practice</h2>
     <p>Practice your debate skills against an AI opponent.<br>Designed for Class 9 and 10 students.</p>
-    <button class="start-btn" onclick="startSession()">Start Debate Session</button>
+    <div class="error-msg" id="start-error"></div>
+    <button class="start-btn" id="start-btn" onclick="startSession()">Start Debate Session</button>
   </div>
+
   <div id="debate-screen" class="hidden">
     <div id="round-info" class="round-badge">Round 0</div>
+    <div class="error-msg" id="debate-error"></div>
     <div class="chat-box" id="chat"></div>
     <p class="status" id="status">Ready</p>
     <div class="controls">
@@ -72,7 +79,9 @@
       </div>
     </div>
   </div>
+
 </div>
+
 <script>
 let sessionId = null;
 let recognition = null;
@@ -80,41 +89,75 @@ let isListening = false;
 let isBusy = false;
 
 async function startSession() {
-  document.getElementById('start-screen').classList.add('hidden');
-  document.getElementById('debate-screen').classList.remove('hidden');
-  setStatus('Starting your debate session...');
-  setBusy(true);
+  const startBtn = document.getElementById('start-btn');
+  const errorDiv = document.getElementById('start-error');
+  startBtn.textContent = 'Starting...';
+  startBtn.disabled = true;
+  errorDiv.style.display = 'none';
+
   try {
-    const res = await fetch('/session/start', { method: 'POST' });
+    const res = await fetch('/session/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error('Server error: ' + err);
+    }
+
     const data = await res.json();
+    console.log('Start response:', data);
+
+    if (!data.session_id) throw new Error('No session ID returned');
+
     sessionId = data.session_id;
-    addMessage('agent', 'Debate Agent', data.text);
-    await playAudio(data.audio);
+
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('debate-screen').classList.remove('hidden');
+
+    const agentText = data.text || 'Good day. Welcome to your debate practice session.';
+    addMessage('agent', 'Debate Agent', agentText);
+
+    if (data.audio) {
+      await playAudio(data.audio);
+    }
+
     setStatus('Your turn — speak or type your argument');
+
   } catch(e) {
-    setStatus('Error: ' + e.message);
-  } finally {
-    setBusy(false);
+    console.error('Start error:', e);
+    errorDiv.textContent = 'Error: ' + e.message;
+    errorDiv.style.display = 'block';
+    startBtn.textContent = 'Start Debate Session';
+    startBtn.disabled = false;
   }
 }
 
 function setupRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { alert('Voice input requires Chrome or Edge browser.'); return null; }
+  if (!SR) {
+    alert('Voice input requires Chrome or Edge browser.');
+    return null;
+  }
   const rec = new SR();
   rec.continuous = false;
   rec.interimResults = true;
   rec.lang = 'en-IN';
+
   rec.onstart = () => {
     isListening = true;
     document.getElementById('mic-btn').className = 'mic-btn listening';
     document.getElementById('mic-btn').textContent = '⏹️ Stop Recording';
     setStatus('Listening — speak your argument...', true);
   };
+
   rec.onresult = (e) => {
-    const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+    const transcript = Array.from(e.results)
+      .map(r => r[0].transcript).join('');
     document.getElementById('text-input').value = transcript;
   };
+
   rec.onend = () => {
     isListening = false;
     document.getElementById('mic-btn').className = 'mic-btn idle';
@@ -122,12 +165,14 @@ function setupRecognition() {
     const text = document.getElementById('text-input').value.trim();
     if (text) sendArgument(text);
   };
+
   rec.onerror = (e) => {
     setStatus('Mic error: ' + e.error);
     isListening = false;
     document.getElementById('mic-btn').className = 'mic-btn idle';
     document.getElementById('mic-btn').textContent = '🎙️ Click to Speak';
   };
+
   return rec;
 }
 
@@ -135,8 +180,12 @@ function toggleMic() {
   if (isBusy) return;
   if (!recognition) recognition = setupRecognition();
   if (!recognition) return;
-  if (isListening) { recognition.stop(); }
-  else { document.getElementById('text-input').value = ''; recognition.start(); }
+  if (isListening) {
+    recognition.stop();
+  } else {
+    document.getElementById('text-input').value = '';
+    recognition.start();
+  }
 }
 
 function sendText() {
@@ -145,23 +194,45 @@ function sendText() {
 }
 
 async function sendArgument(text) {
+  const errorDiv = document.getElementById('debate-error');
+  errorDiv.style.display = 'none';
   addMessage('student', 'You', text);
   document.getElementById('text-input').value = '';
   setStatus('AI is thinking...');
   setBusy(true);
+
   try {
     const res = await fetch('/session/respond', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, text })
+      body: JSON.stringify({ session_id: sessionId, text: text })
     });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error('Server error: ' + err);
+    }
+
     const data = await res.json();
-    document.getElementById('round-info').textContent = 'Round ' + data.round;
-    addMessage('agent', 'Debate Agent', data.text);
-    await playAudio(data.audio);
+    console.log('Respond response:', data);
+
+    const agentText = data.text || 'No response received';
+    const round = data.round || 0;
+
+    document.getElementById('round-info').textContent = 'Round ' + round;
+    addMessage('agent', 'Debate Agent', agentText);
+
+    if (data.audio) {
+      await playAudio(data.audio);
+    }
+
     setStatus('Your turn — speak or type your argument');
+
   } catch(e) {
-    setStatus('Error: ' + e.message);
+    console.error('Respond error:', e);
+    errorDiv.textContent = 'Error: ' + e.message;
+    errorDiv.style.display = 'block';
+    setStatus('Something went wrong — try again');
   } finally {
     setBusy(false);
   }
@@ -169,17 +240,39 @@ async function sendArgument(text) {
 
 async function endDebate() {
   if (isBusy) return;
+  const errorDiv = document.getElementById('debate-error');
+  errorDiv.style.display = 'none';
   setStatus('Generating your feedback...');
   setBusy(true);
+
   try {
     const res = await fetch('/session/summary/' + sessionId);
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error('Server error: ' + err);
+    }
+
     const data = await res.json();
-    addMessage('agent', 'Debate Feedback', data.summary);
-    await playAudio(data.audio);
-    setStatus('Debate complete — ' + data.total_rounds + ' rounds');
+    console.log('Summary response:', data);
+
+    const summaryText = data.summary || 'Debate complete.';
+    const totalRounds = data.total_rounds || 0;
+
+    addMessage('agent', 'Debate Feedback', summaryText);
+
+    if (data.audio) {
+      await playAudio(data.audio);
+    }
+
+    setStatus('Debate complete — ' + totalRounds + ' rounds');
     await fetch('/session/' + sessionId, { method: 'DELETE' });
+
   } catch(e) {
-    setStatus('Error: ' + e.message);
+    console.error('Summary error:', e);
+    errorDiv.textContent = 'Error: ' + e.message;
+    errorDiv.style.display = 'block';
+    setStatus('Something went wrong');
   } finally {
     setBusy(false);
   }
@@ -196,10 +289,14 @@ function addMessage(type, label, text) {
 
 function playAudio(b64) {
   return new Promise(resolve => {
-    const audio = new Audio('data:audio/mp3;base64,' + b64);
-    audio.onended = resolve;
-    audio.onerror = resolve;
-    audio.play().catch(resolve);
+    try {
+      const audio = new Audio('data:audio/mp3;base64,' + b64);
+      audio.onended = resolve;
+      audio.onerror = resolve;
+      audio.play().catch(resolve);
+    } catch(e) {
+      resolve();
+    }
   });
 }
 
@@ -211,12 +308,17 @@ function setStatus(msg, isRed = false) {
 
 function setBusy(busy) {
   isBusy = busy;
-  document.getElementById('mic-btn').disabled = busy;
-  document.getElementById('send-btn').disabled = busy;
-  document.getElementById('end-btn').disabled = busy;
+  const micBtn = document.getElementById('mic-btn');
+  const sendBtn = document.getElementById('send-btn');
+  const endBtn = document.getElementById('end-btn');
+  if (micBtn) micBtn.disabled = busy;
+  if (sendBtn) sendBtn.disabled = busy;
+  if (endBtn) endBtn.disabled = busy;
 }
 
-window.onload = () => { recognition = setupRecognition(); };
+window.onload = () => {
+  recognition = setupRecognition();
+};
 </script>
 </body>
 </html>
