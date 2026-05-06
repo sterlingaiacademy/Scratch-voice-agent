@@ -12,7 +12,7 @@ class DebateAgent:
         self.session_id = session_id
         self.round = 0
         self.history = []
-        model = GenerativeModel("gemini-1.5-flash-001")
+        model = GenerativeModel("gemini-1.5-flash-002")
         self.chat = model.start_chat()
         self.chat.send_message("""
 # Personality
