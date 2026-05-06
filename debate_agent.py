@@ -4,7 +4,7 @@ from vertexai.generative_models import GenerativeModel
 
 vertexai.init(
     project=os.environ["GCP_PROJECT"],
-    location="asia-south1"
+    location="us-central1"
 )
 
 class DebateAgent:
@@ -12,7 +12,7 @@ class DebateAgent:
         self.session_id = session_id
         self.round = 0
         self.history = []
-        model = GenerativeModel("gemini-1.5-flash")
+        model = GenerativeModel("gemini-1.5-flash-001")
         self.chat = model.start_chat()
         self.chat.send_message("""
 # Personality
